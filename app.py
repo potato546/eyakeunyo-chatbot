@@ -34,9 +34,14 @@ app = Flask(__name__)
 SERVICE_KEY = os.environ.get("DATA_GO_KR_SERVICE_KEY", "")
 EASY_DRUG_KEY = os.environ.get("DATA_GO_KR_EASY_KEY") or SERVICE_KEY
 DUR_KEY = os.environ.get("DATA_GO_KR_DUR_KEY") or SERVICE_KEY
+# 의약품 제품 허가정보 (전문+일반 의약품 모두 포함, e약은요에 없는 전문의약품 대응용)
+PERMIT_KEY = os.environ.get("DATA_GO_KR_PERMIT_KEY") or SERVICE_KEY
 
 EASY_DRUG_URL = "http://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList"
 DUR_BASE_URL = "http://apis.data.go.kr/1471000/DURPrdlstInfoService03"
+# 서비스명 뒤 숫자(07 등)는 식약처가 주기적으로 버전업합니다.
+# 만약 호출이 안 되면 data.go.kr에서 최신 서비스명을 확인해 이 값만 바꿔주세요.
+DRUG_PERMIT_URL = "http://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07"
 
 # DUR 오퍼레이션 목록 (일부는 실제 Swagger에서 이름 재확인 필요 - README 참고)
 DUR_OPERATIONS = {
@@ -96,7 +101,43 @@ def call_easy_drug(item_name=None, entp_name=None, num_of_rows=10):
     return _extract_items(data), data
 
 
-def call_dur(operation_key, item_name=None, num_of_rows=50):
+def call_drug_permit(item_name=None, num_of_rows=5):
+    params = {"pageNo": 1, "numOfRows": num_of_rows}
+    if item_name:
+        params["item_name"] = item_name  # 이 API는 item_name(스네이크케이스)인 경우가 많음 - 응답 없으면 itemName도 시도
+    data = _get(DRUG_PERMIT_URL, params, PERMIT_KEY)
+    items = _extract_items(data)
+    if not items and item_name:
+        # 파라미터 표기가 itemName일 수도 있어 한 번 더 시도
+        params2 = {"pageNo": 1, "numOfRows": num_of_rows, "itemName": item_name}
+        data = _get(DRUG_PERMIT_URL, params2, PERMIT_KEY)
+        items = _extract_items(data)
+    return items, data
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_html(text):
+    if not text:
+        return text
+    text = _TAG_RE.sub(" ", str(text))
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _find_field(item, keywords):
+    """필드명이 정확히 뭔지 확신할 수 없을 때, 키에 특정 키워드가 들어간 값을 찾아본다."""
+    for k, v in item.items():
+        if not v:
+            continue
+        key_lower = k.lower()
+        if any(kw in key_lower for kw in keywords):
+            return v
+    return None
+
+
+
     operation = DUR_OPERATIONS[operation_key]
     url = f"{DUR_BASE_URL}/{operation}"
     params = {"pageNo": 1, "numOfRows": num_of_rows}
@@ -116,24 +157,41 @@ def drug_info():
         return jsonify({"error": "검색어(q)가 필요합니다."}), 400
 
     items, raw = call_easy_drug(item_name=query)
-    if not items:
-        # 제품명으로 안 나오면 업체명/성분명 느낌으로도 한 번 더 시도해볼 수 있으나
-        # e약은요 API 자체는 성분명 파라미터를 직접 지원하지 않음 (제품명 기준 검색)
-        return jsonify({"query": query, "results": [], "raw": raw})
+    if items:
+        results = []
+        for it in items:
+            results.append({
+                "source": "e약은요 (일반의약품)",
+                "entpName": it.get("entpName"),
+                "itemName": it.get("itemName"),
+                "itemSeq": it.get("itemSeq"),
+                "efficacy": it.get("efcyQesitm"),           # 효능
+                "usage": it.get("useMethodQesitm"),          # 사용법
+                "warning": it.get("atpnWarnQesitm"),         # 주의사항(경고)
+                "caution": it.get("atpnQesitm"),             # 주의사항
+                "interaction": it.get("intrcQesitm"),        # 상호작용
+                "sideEffect": it.get("seQesitm"),            # 부작용
+                "storage": it.get("depositMethodQesitm"),    # 보관법
+            })
+        return jsonify({"query": query, "results": results})
+
+    # e약은요에 없으면 (전문의약품일 가능성) 의약품 제품 허가정보로 폴백
+    permit_items, permit_raw = call_drug_permit(item_name=query)
+    if not permit_items:
+        return jsonify({"query": query, "results": [], "raw": raw, "permitRaw": permit_raw})
 
     results = []
-    for it in items:
+    for it in permit_items:
         results.append({
-            "entpName": it.get("entpName"),
-            "itemName": it.get("itemName"),
-            "itemSeq": it.get("itemSeq"),
-            "efficacy": it.get("efcyQesitm"),           # 효능
-            "usage": it.get("useMethodQesitm"),          # 사용법
-            "warning": it.get("atpnWarnQesitm"),         # 주의사항(경고)
-            "caution": it.get("atpnQesitm"),             # 주의사항
-            "interaction": it.get("intrcQesitm"),        # 상호작용
-            "sideEffect": it.get("seQesitm"),            # 부작용
-            "storage": it.get("depositMethodQesitm"),    # 보관법
+            "source": "의약품 제품 허가정보 (전문/일반 포함)",
+            "entpName": _find_field(it, ["entp", "업체"]),
+            "itemName": _find_field(it, ["itemname", "item_name"]) or query,
+            "itemSeq": _find_field(it, ["itemseq", "item_seq"]),
+            "etcOtc": _find_field(it, ["etcotc", "etc_otc"]),   # 전문/일반 구분
+            "efficacy": _strip_html(_find_field(it, ["eedoc", "ee_doc", "efcy"])),
+            "usage": _strip_html(_find_field(it, ["uddoc", "ud_doc", "usemethod"])),
+            "caution": _strip_html(_find_field(it, ["nbdoc", "nb_doc", "atpn"])),
+            "raw": it,  # 필드명이 예상과 다를 경우를 대비해 원본도 같이 반환
         })
     return jsonify({"query": query, "results": results})
 
@@ -249,6 +307,13 @@ def dosage_check():
 # 디버그용: 특정 DUR 오퍼레이션의 원본 응답을 그대로 보고 싶을 때
 # (필드명이 예상과 다를 때 이 엔드포인트로 실제 구조를 확인하세요)
 # ------------------------------------------------------------------
+@app.route("/api/debug/permit-raw")
+def debug_permit_raw():
+    item_name = request.args.get("itemName", "메드론정4밀리그램")
+    _items, raw = call_drug_permit(item_name=item_name)
+    return jsonify(raw)
+
+
 @app.route("/api/debug/raw")
 def debug_raw():
     operation_key = request.args.get("op", "usjnt_taboo")
