@@ -41,7 +41,7 @@ EASY_DRUG_URL = "http://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEas
 DUR_BASE_URL = "http://apis.data.go.kr/1471000/DURPrdlstInfoService03"
 # 서비스명 뒤 숫자(07 등)는 식약처가 주기적으로 버전업합니다.
 # 만약 호출이 안 되면 data.go.kr에서 최신 서비스명을 확인해 이 값만 바꿔주세요.
-DRUG_PERMIT_URL = "http://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07"
+DRUG_PERMIT_URL = "https://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07"
 
 # DUR 오퍼레이션 목록 (일부는 실제 Swagger에서 이름 재확인 필요 - README 참고)
 DUR_OPERATIONS = {
