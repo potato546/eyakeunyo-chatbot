@@ -60,8 +60,18 @@ DUR_OPERATIONS = {
 # ------------------------------------------------------------------
 def _get(url, params, service_key, timeout=10):
     params = {**params, "serviceKey": service_key, "type": "json"}
-    resp = requests.get(url, params=params, timeout=timeout)
-    resp.raise_for_status()
+    try:
+        resp = requests.get(url, params=params, timeout=timeout)
+    except requests.RequestException as e:
+        return {"_http_error": True, "_status_code": None, "_raw_text": str(e)}
+    if resp.status_code != 200:
+        # 여기서 바로 예외를 던지지 않고, 실제 응답 본문을 그대로 담아 반환한다.
+        # (data.go.kr이 403/500일 때 왜 막았는지 본문에 사유가 적혀있는 경우가 많음)
+        return {
+            "_http_error": True,
+            "_status_code": resp.status_code,
+            "_raw_text": resp.text[:2000],
+        }
     try:
         data = resp.json()
     except ValueError:
