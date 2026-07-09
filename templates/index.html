@@ -200,6 +200,7 @@ async function handleInfo(query) {
     data.results.slice(0, 3).forEach(item => {
       const lines = [
         `📌 ${item.itemName} (${item.entpName || '-'})`,
+        item.source ? `\n[출처] ${item.source}${item.etcOtc ? ' · ' + item.etcOtc : ''}` : '',
         item.efficacy ? `\n[효능] ${item.efficacy}` : '',
         item.usage ? `\n[사용법] ${item.usage}` : '',
         item.caution ? `\n[주의사항] ${item.caution}` : '',
