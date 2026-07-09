@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: eyakeunyo-chatbot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DATA_GO_KR_SERVICE_KEY
+        sync: false   # Render 대시보드에서 직접 입력 (공통 키 - 대부분 이것만 있으면 됨)
+      - key: DATA_GO_KR_EASY_KEY
+        sync: false   # 선택: e약은요 인증키가 DUR과 다를 때만 입력
+      - key: DATA_GO_KR_DUR_KEY
+        sync: false   # 선택: DUR 인증키가 e약은요와 다를 때만 입력
