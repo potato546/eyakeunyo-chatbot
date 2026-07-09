@@ -12,3 +12,5 @@ services:
         sync: false   # 선택: e약은요 인증키가 DUR과 다를 때만 입력
       - key: DATA_GO_KR_DUR_KEY
         sync: false   # 선택: DUR 인증키가 e약은요와 다를 때만 입력
+      - key: DATA_GO_KR_PERMIT_KEY
+        sync: false   # 선택: 의약품 제품 허가정보 인증키가 다를 때만 입력
